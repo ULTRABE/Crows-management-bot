@@ -18,15 +18,13 @@ app = Client(
 # ---------------- STORAGE ----------------
 LINK_DELETE_ENABLED = {}
 WELCOME_ENABLED = {}
-WELCOME_DATA = {}     # {chat_id: {type, file_id?, text}}
+WELCOME_DATA = {}
 RULES_TEXT = {}
 
-# STATE FLAGS
 WAITING_FOR_RULES = set()
 WAITING_FOR_WELCOME = set()
 
 WELCOME_DELETE_AFTER = 10
-
 LINK_REGEX = re.compile(r"(https?://|t\.me/|www\.)", re.I)
 
 # ---------------- ADMIN CHECK ----------------
@@ -47,7 +45,7 @@ async def is_admin(client, message):
 def start_cmd(client, message):
     message.reply_text("Bot is alive.")
 
-# ---------------- ADMINS LIST ----------------
+# ---------------- ADMINS ----------------
 @app.on_message(filters.command("admins") & filters.group)
 async def list_admins(client, message):
     admins = []
@@ -57,10 +55,11 @@ async def list_admins(client, message):
     ):
         if m.user:
             admins.append(m.user.mention)
-
     await message.reply_text("Admins:\n" + "\n".join(admins))
 
-# ---------------- MAIN CONTENT PIPELINE ----------------
+# =================================================
+# CONFIG + CONTENT PIPELINE (NO DELETIONS)
+# =================================================
 @app.on_message(
     filters.group
     & (filters.text | filters.photo | filters.video)
@@ -79,29 +78,24 @@ async def content_pipeline(client, message):
 
     # ---------- WELCOME CAPTURE ----------
     if chat_id in WAITING_FOR_WELCOME and await is_admin(client, message):
-        data = None
-
         if message.text:
             data = {
                 "type": "text",
                 "text": message.text
             }
-
         elif message.photo:
             data = {
                 "type": "photo",
                 "file_id": message.photo.file_id,
                 "text": message.caption or ""
             }
-
         elif message.video:
             data = {
                 "type": "video",
                 "file_id": message.video.file_id,
                 "text": message.caption or ""
             }
-
-        if not data:
+        else:
             await message.reply_text("Unsupported welcome type.")
             return
 
@@ -112,18 +106,30 @@ async def content_pipeline(client, message):
         await message.reply_text("Welcome message saved.")
         return
 
-    # ---------- SKIP MODERATION DURING CONFIG ----------
+# =================================================
+# LINK DELETE — PURE TEXT ONLY (FINAL FIX)
+# =================================================
+@app.on_message(filters.group & filters.text & ~filters.regex(r"^/"))
+async def link_delete_handler(client, message):
+    chat_id = message.chat.id
+
+    # 🔒 DO NOT TOUCH MEDIA (photo/video with caption)
+    if message.media:
+        return
+
+    # Skip during configuration
     if chat_id in WAITING_FOR_RULES or chat_id in WAITING_FOR_WELCOME:
         return
 
-    # ---------- LINK DELETE ----------
-    if LINK_DELETE_ENABLED.get(chat_id, True):
-        if message.text and LINK_REGEX.search(message.text):
-            await asyncio.sleep(5)
-            try:
-                await message.delete()
-            except Exception:
-                pass
+    if not LINK_DELETE_ENABLED.get(chat_id, True):
+        return
+
+    if LINK_REGEX.search(message.text):
+        await asyncio.sleep(5)
+        try:
+            await message.delete()
+        except Exception:
+            pass
 
 # ---------------- LINKS TOGGLE ----------------
 @app.on_message(filters.command("links") & filters.group)
@@ -156,7 +162,6 @@ async def show_rules(client, message):
     if not rules:
         await message.reply_text("No rules set.")
         return
-
     await message.reply_text("Rules:\n" + rules)
 
 # ---------------- SET WELCOME ----------------
@@ -201,22 +206,17 @@ async def welcome_new_members(client, message):
         try:
             if data["type"] == "text":
                 sent = await message.reply_text(text)
-
             elif data["type"] == "photo":
                 sent = await message.reply_photo(
-                    photo=data["file_id"],
-                    caption=text or None
+                    photo=data["file_id"], caption=text or None
                 )
-
             elif data["type"] == "video":
                 sent = await message.reply_video(
-                    video=data["file_id"],
-                    caption=text or None
+                    video=data["file_id"], caption=text or None
                 )
 
             await asyncio.sleep(WELCOME_DELETE_AFTER)
             await sent.delete()
-
         except Exception:
             pass
 
