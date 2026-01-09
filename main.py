@@ -2,11 +2,7 @@ import logging
 import asyncio
 import re
 from pyrogram import Client, filters
-from pyrogram.types import (
-    Message,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-)
+from pyrogram.types import Message
 from pyrogram.enums import ChatMemberStatus
 from config import API_ID, API_HASH, BOT_TOKEN
 
@@ -25,7 +21,11 @@ app = Client(
 )
 
 # ---------------- IN-MEMORY SETTINGS ----------------
-LINK_DELETE_ENABLED = {}  # chat_id: bool (default True)
+LINK_DELETE_ENABLED = {}     # chat_id: bool
+WELCOME_ENABLED = {}         # chat_id: bool
+WELCOME_TEXT = {}            # chat_id: str
+
+WELCOME_DELETE_AFTER = 10    # seconds
 
 # ---------------- ADMIN CHECK ----------------
 async def is_admin(client: Client, message: Message) -> bool:
@@ -43,16 +43,10 @@ async def is_admin(client: Client, message: Message) -> bool:
     except Exception:
         return False
 
-# ---------------- HELPERS ----------------
-def get_target_user(message: Message):
-    if message.reply_to_message and message.reply_to_message.from_user:
-        return message.reply_to_message.from_user
-    return message.from_user
-
 # ---------------- START ----------------
 @app.on_message(filters.command("start"))
 def start_cmd(client, message: Message):
-    message.reply_text("Bot is alive. Phase 0 OK.")
+    message.reply_text("Bot is alive. Core system running.")
 
 # ---------------- ADMIN TEST ----------------
 @app.on_message(filters.command("admin") & filters.group)
@@ -96,7 +90,6 @@ LINK_REGEX = re.compile(
 async def auto_delete_links(client: Client, message: Message):
     chat_id = message.chat.id
 
-    # default = enabled
     if LINK_DELETE_ENABLED.get(chat_id, True) is False:
         return
 
@@ -107,34 +100,66 @@ async def auto_delete_links(client: Client, message: Message):
         except Exception:
             pass
 
-# ---------------- SANGMATA RELAY (FIXED) ----------------
+# ---------------- WELCOME COMMANDS ----------------
 
-@app.on_message(filters.command("age") & filters.group)
-async def sangmata_username_history(client: Client, message: Message):
-    user = get_target_user(message)
-    query = f"@{user.username}" if user.username else str(user.id)
+@app.on_message(filters.command("setwelcome") & filters.group)
+async def set_welcome(client: Client, message: Message):
+    if not await is_admin(client, message):
+        return
 
-    kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton(
-            text="View via SangMata",
-            switch_inline_query_current_chat=query
-        )]]
-    )
-    await message.reply_text("Username history", reply_markup=kb)
+    if not message.reply_to_message or not message.reply_to_message.text:
+        await message.reply_text("Reply to a message to set welcome text.")
+        return
 
+    chat_id = message.chat.id
+    WELCOME_TEXT[chat_id] = message.reply_to_message.text
+    WELCOME_ENABLED[chat_id] = True
 
-@app.on_message(filters.command("nage") & filters.group)
-async def sangmata_name_history(client: Client, message: Message):
-    user = get_target_user(message)
-    query = f"@{user.username}" if user.username else str(user.id)
+    await message.reply_text("Welcome message set.")
 
-    kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton(
-            text="View via SangMata",
-            switch_inline_query_current_chat=query
-        )]]
-    )
-    await message.reply_text("Name history", reply_markup=kb)
+@app.on_message(filters.command("welcome") & filters.group)
+async def toggle_welcome(client: Client, message: Message):
+    if not await is_admin(client, message):
+        return
+
+    args = message.text.split(maxsplit=1)
+    chat_id = message.chat.id
+
+    if len(args) < 2:
+        await message.reply_text("Usage: /welcome on | off")
+        return
+
+    state = args[1].lower()
+
+    if state == "on":
+        WELCOME_ENABLED[chat_id] = True
+        await message.reply_text("Welcome enabled.")
+    elif state == "off":
+        WELCOME_ENABLED[chat_id] = False
+        await message.reply_text("Welcome disabled.")
+    else:
+        await message.reply_text("Usage: /welcome on | off")
+
+# ---------------- WELCOME HANDLER ----------------
+@app.on_message(filters.new_chat_members)
+async def welcome_new_members(client: Client, message: Message):
+    chat_id = message.chat.id
+
+    if not WELCOME_ENABLED.get(chat_id, False):
+        return
+
+    text = WELCOME_TEXT.get(chat_id, "Welcome {mention}")
+
+    for user in message.new_chat_members:
+        mention = user.mention
+        final_text = text.replace("{mention}", mention)
+
+        try:
+            sent = await message.reply_text(final_text)
+            await asyncio.sleep(WELCOME_DELETE_AFTER)
+            await sent.delete()
+        except Exception:
+            pass
 
 # ---------------- RUN ----------------
 app.run()
