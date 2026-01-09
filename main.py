@@ -18,7 +18,7 @@ app = Client(
 # ---------------- STORAGE ----------------
 LINK_DELETE_ENABLED = {}
 WELCOME_ENABLED = {}
-WELCOME_DATA = {}        # supports text / photo / video
+WELCOME_DATA = {}     # {chat_id: {type, file_id?, text}}
 RULES_TEXT = {}
 
 # STATE FLAGS
@@ -81,14 +81,12 @@ async def content_pipeline(client, message):
     if chat_id in WAITING_FOR_WELCOME and await is_admin(client, message):
         data = None
 
-        # TEXT
         if message.text:
             data = {
                 "type": "text",
                 "text": message.text
             }
 
-        # PHOTO
         elif message.photo:
             data = {
                 "type": "photo",
@@ -96,7 +94,6 @@ async def content_pipeline(client, message):
                 "text": message.caption or ""
             }
 
-        # VIDEO
         elif message.video:
             data = {
                 "type": "video",
@@ -113,6 +110,10 @@ async def content_pipeline(client, message):
         WAITING_FOR_WELCOME.remove(chat_id)
 
         await message.reply_text("Welcome message saved.")
+        return
+
+    # ---------- SKIP MODERATION DURING CONFIG ----------
+    if chat_id in WAITING_FOR_RULES or chat_id in WAITING_FOR_WELCOME:
         return
 
     # ---------- LINK DELETE ----------
