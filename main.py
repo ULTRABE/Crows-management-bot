@@ -6,10 +6,8 @@ from pyrogram.types import Message
 from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from config import API_ID, API_HASH, BOT_TOKEN
 
-# ---------------- LOGGING ----------------
 logging.basicConfig(level=logging.INFO)
 
-# ---------------- BOT CLIENT ----------------
 app = Client(
     "crow_manager_bot",
     api_id=API_ID,
@@ -17,7 +15,7 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# ---------------- IN-MEMORY SETTINGS ----------------
+# ---------------- STORAGE ----------------
 LINK_DELETE_ENABLED = {}
 WELCOME_ENABLED = {}
 WELCOME_TEXT = {}
@@ -26,7 +24,7 @@ RULES_TEXT = {}
 WELCOME_DELETE_AFTER = 10
 
 # ---------------- ADMIN CHECK ----------------
-async def is_admin(client: Client, message: Message) -> bool:
+async def is_admin(client, message):
     try:
         member = await client.get_chat_member(
             message.chat.id, message.from_user.id
@@ -43,7 +41,7 @@ async def is_admin(client: Client, message: Message) -> bool:
 def start_cmd(client, message):
     message.reply_text("Bot is alive.")
 
-# ---------------- ADMINS LIST ----------------
+# ---------------- ADMINS ----------------
 @app.on_message(filters.command("admins") & filters.group)
 async def list_admins(client, message):
     admins = []
@@ -56,7 +54,7 @@ async def list_admins(client, message):
 
     await message.reply_text("Admins:\n" + "\n".join(admins))
 
-# ---------------- AUTO DELETE LINKS ----------------
+# ---------------- LINK DELETE ----------------
 LINK_REGEX = re.compile(r"(https?://|t\.me/|www\.)", re.I)
 
 @app.on_message(filters.group & filters.text)
@@ -69,25 +67,25 @@ async def auto_delete_links(client, message):
             except Exception:
                 pass
 
-# ---------------- SET RULES (FIXED) ----------------
-@app.on_message(filters.command("setrules") & filters.group)
+# ---------------- SET RULES ----------------
+@app.on_message(
+    (filters.command("setrules") | filters.command(["set", "rules"])) & filters.group
+)
 async def set_rules(client, message):
     if not await is_admin(client, message):
         return
 
     text = None
 
-    # Case 1: reply-based
     if message.reply_to_message:
         text = message.reply_to_message.text or message.reply_to_message.caption
 
-    # Case 2: inline text
     if not text and len(message.command) > 1:
         text = message.text.split(None, 1)[1]
 
     if not text:
         await message.reply_text(
-            "Usage:\nReply to a message with /setrules\nor\n/setrules <rules text>"
+            "Usage:\n/setrules <text>\nor reply to a message with /setrules"
         )
         return
 
@@ -103,8 +101,10 @@ async def show_rules(client, message):
         return
     await message.reply_text("Rules:\n" + rules)
 
-# ---------------- SET WELCOME (FIXED) ----------------
-@app.on_message(filters.command("setwelcome") & filters.group)
+# ---------------- SET WELCOME ----------------
+@app.on_message(
+    (filters.command("setwelcome") | filters.command(["set", "welcome"])) & filters.group
+)
 async def set_welcome(client, message):
     if not await is_admin(client, message):
         return
@@ -119,7 +119,7 @@ async def set_welcome(client, message):
 
     if not text:
         await message.reply_text(
-            "Usage:\nReply to a message with /setwelcome\nor\n/setwelcome <welcome text>"
+            "Usage:\n/setwelcome <text>\nor reply to a message with /setwelcome"
         )
         return
 
@@ -137,9 +137,8 @@ async def toggle_welcome(client, message):
         await message.reply_text("Usage: /welcome on | off")
         return
 
-    state = message.command[1].lower()
-    WELCOME_ENABLED[message.chat.id] = state == "on"
-    await message.reply_text(f"Welcome {'enabled' if state=='on' else 'disabled'}.")
+    WELCOME_ENABLED[message.chat.id] = message.command[1].lower() == "on"
+    await message.reply_text("Welcome updated.")
 
 # ---------------- WELCOME HANDLER ----------------
 @app.on_message(filters.new_chat_members & filters.group)
