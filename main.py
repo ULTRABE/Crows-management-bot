@@ -7,10 +7,7 @@ from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from config import API_ID, API_HASH, BOT_TOKEN
 
 # ---------------- LOGGING ----------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 
 # ---------------- BOT CLIENT ----------------
 app = Client(
@@ -30,12 +27,9 @@ WELCOME_DELETE_AFTER = 10
 
 # ---------------- ADMIN CHECK ----------------
 async def is_admin(client: Client, message: Message) -> bool:
-    if not message.from_user or not message.chat:
-        return False
     try:
         member = await client.get_chat_member(
-            message.chat.id,
-            message.from_user.id
+            message.chat.id, message.from_user.id
         )
         return member.status in (
             ChatMemberStatus.ADMINISTRATOR,
@@ -46,151 +40,122 @@ async def is_admin(client: Client, message: Message) -> bool:
 
 # ---------------- START ----------------
 @app.on_message(filters.command("start"))
-def start_cmd(client, message: Message):
-    message.reply_text("Bot is alive. Core system running.")
+def start_cmd(client, message):
+    message.reply_text("Bot is alive.")
 
 # ---------------- ADMINS LIST ----------------
 @app.on_message(filters.command("admins") & filters.group)
-async def list_admins(client: Client, message: Message):
+async def list_admins(client, message):
     admins = []
-    async for member in client.get_chat_members(
+    async for m in client.get_chat_members(
         message.chat.id,
         filter=ChatMembersFilter.ADMINISTRATORS
     ):
-        if member.user:
-            admins.append(member.user.mention)
-
-    if not admins:
-        await message.reply_text("No admins found.")
-        return
+        if m.user:
+            admins.append(m.user.mention)
 
     await message.reply_text("Admins:\n" + "\n".join(admins))
 
-# ---------------- LINKS TOGGLE ----------------
-@app.on_message(filters.command("links") & filters.group)
-async def links_toggle(client: Client, message: Message):
-    if not await is_admin(client, message):
-        return
-
-    args = message.text.split(maxsplit=1)
-    chat_id = message.chat.id
-
-    if len(args) < 2:
-        await message.reply_text("Usage: /links on | off")
-        return
-
-    state = args[1].lower()
-
-    if state == "off":
-        LINK_DELETE_ENABLED[chat_id] = False
-        await message.reply_text("Link auto-delete disabled.")
-    elif state == "on":
-        LINK_DELETE_ENABLED[chat_id] = True
-        await message.reply_text("Link auto-delete enabled.")
-    else:
-        await message.reply_text("Usage: /links on | off")
-
 # ---------------- AUTO DELETE LINKS ----------------
-LINK_REGEX = re.compile(
-    r"(https?://|t\.me/|www\.)",
-    re.IGNORECASE
-)
+LINK_REGEX = re.compile(r"(https?://|t\.me/|www\.)", re.I)
 
 @app.on_message(filters.group & filters.text)
-async def auto_delete_links(client: Client, message: Message):
-    chat_id = message.chat.id
-
-    if LINK_DELETE_ENABLED.get(chat_id, True) is False:
-        return
-
-    if message.text and LINK_REGEX.search(message.text):
-        try:
+async def auto_delete_links(client, message):
+    if LINK_DELETE_ENABLED.get(message.chat.id, True):
+        if LINK_REGEX.search(message.text):
             await asyncio.sleep(5)
-            await message.delete()
-        except Exception:
-            pass
+            try:
+                await message.delete()
+            except Exception:
+                pass
 
-# ---------------- SET WELCOME ----------------
-@app.on_message(filters.command("setwelcome") & filters.group)
-async def set_welcome(client: Client, message: Message):
-    if not await is_admin(client, message):
-        return
-
-    if not message.reply_to_message or not message.reply_to_message.text:
-        await message.reply_text("Reply to a message to set welcome text.")
-        return
-
-    chat_id = message.chat.id
-    WELCOME_TEXT[chat_id] = message.reply_to_message.text
-    WELCOME_ENABLED[chat_id] = True
-
-    await message.reply_text("Welcome message set.")
-
-# ---------------- TOGGLE WELCOME ----------------
-@app.on_message(filters.command("welcome") & filters.group)
-async def toggle_welcome(client: Client, message: Message):
-    if not await is_admin(client, message):
-        return
-
-    args = message.text.split(maxsplit=1)
-    chat_id = message.chat.id
-
-    if len(args) < 2:
-        await message.reply_text("Usage: /welcome on | off")
-        return
-
-    state = args[1].lower()
-
-    if state == "on":
-        WELCOME_ENABLED[chat_id] = True
-        await message.reply_text("Welcome enabled.")
-    elif state == "off":
-        WELCOME_ENABLED[chat_id] = False
-        await message.reply_text("Welcome disabled.")
-    else:
-        await message.reply_text("Usage: /welcome on | off")
-
-# ---------------- WELCOME HANDLER ----------------
-@app.on_message(filters.new_chat_members & filters.group)
-async def welcome_new_members(client: Client, message: Message):
-    chat_id = message.chat.id
-
-    if not WELCOME_ENABLED.get(chat_id, False):
-        return
-
-    template = WELCOME_TEXT.get(chat_id, "Welcome {mention}")
-
-    for user in message.new_chat_members:
-        text = template.replace("{mention}", user.mention)
-        try:
-            sent = await message.reply_text(text)
-            await asyncio.sleep(WELCOME_DELETE_AFTER)
-            await sent.delete()
-        except Exception:
-            pass
-
-# ---------------- SET RULES ----------------
+# ---------------- SET RULES (FIXED) ----------------
 @app.on_message(filters.command("setrules") & filters.group)
-async def set_rules(client: Client, message: Message):
+async def set_rules(client, message):
     if not await is_admin(client, message):
         return
 
-    if not message.reply_to_message or not message.reply_to_message.text:
-        await message.reply_text("Reply to a message to set rules.")
+    text = None
+
+    # Case 1: reply-based
+    if message.reply_to_message:
+        text = message.reply_to_message.text or message.reply_to_message.caption
+
+    # Case 2: inline text
+    if not text and len(message.command) > 1:
+        text = message.text.split(None, 1)[1]
+
+    if not text:
+        await message.reply_text(
+            "Usage:\nReply to a message with /setrules\nor\n/setrules <rules text>"
+        )
         return
 
-    RULES_TEXT[message.chat.id] = message.reply_to_message.text
-    await message.reply_text("Rules set.")
+    RULES_TEXT[message.chat.id] = text
+    await message.reply_text("Rules updated.")
 
 # ---------------- SHOW RULES ----------------
 @app.on_message(filters.command("rules") & filters.group)
-async def show_rules(client: Client, message: Message):
+async def show_rules(client, message):
     rules = RULES_TEXT.get(message.chat.id)
     if not rules:
-        await message.reply_text("No rules have been set.")
+        await message.reply_text("No rules set.")
+        return
+    await message.reply_text("Rules:\n" + rules)
+
+# ---------------- SET WELCOME (FIXED) ----------------
+@app.on_message(filters.command("setwelcome") & filters.group)
+async def set_welcome(client, message):
+    if not await is_admin(client, message):
         return
 
-    await message.reply_text("Rules:\n" + rules)
+    text = None
+
+    if message.reply_to_message:
+        text = message.reply_to_message.text or message.reply_to_message.caption
+
+    if not text and len(message.command) > 1:
+        text = message.text.split(None, 1)[1]
+
+    if not text:
+        await message.reply_text(
+            "Usage:\nReply to a message with /setwelcome\nor\n/setwelcome <welcome text>"
+        )
+        return
+
+    WELCOME_TEXT[message.chat.id] = text
+    WELCOME_ENABLED[message.chat.id] = True
+    await message.reply_text("Welcome message updated.")
+
+# ---------------- TOGGLE WELCOME ----------------
+@app.on_message(filters.command("welcome") & filters.group)
+async def toggle_welcome(client, message):
+    if not await is_admin(client, message):
+        return
+
+    if len(message.command) < 2:
+        await message.reply_text("Usage: /welcome on | off")
+        return
+
+    state = message.command[1].lower()
+    WELCOME_ENABLED[message.chat.id] = state == "on"
+    await message.reply_text(f"Welcome {'enabled' if state=='on' else 'disabled'}.")
+
+# ---------------- WELCOME HANDLER ----------------
+@app.on_message(filters.new_chat_members & filters.group)
+async def welcome_new_members(client, message):
+    if not WELCOME_ENABLED.get(message.chat.id):
+        return
+
+    template = WELCOME_TEXT.get(message.chat.id, "Welcome {mention}")
+    for user in message.new_chat_members:
+        text = template.replace("{mention}", user.mention)
+        sent = await message.reply_text(text)
+        await asyncio.sleep(WELCOME_DELETE_AFTER)
+        try:
+            await sent.delete()
+        except Exception:
+            pass
 
 # ---------------- RUN ----------------
 app.run()
