@@ -27,7 +27,7 @@ WELCOME_TEXT = {}            # chat_id: str
 
 WELCOME_DELETE_AFTER = 10    # seconds
 
-# ---------------- ADMIN CHECK ----------------
+# ---------------- ADMIN CHECK (HELPER) ----------------
 async def is_admin(client: Client, message: Message) -> bool:
     if not message.from_user or not message.chat:
         return False
@@ -48,13 +48,25 @@ async def is_admin(client: Client, message: Message) -> bool:
 def start_cmd(client, message: Message):
     message.reply_text("Bot is alive. Core system running.")
 
-# ---------------- ADMIN TEST ----------------
-@app.on_message(filters.command("admin") & filters.group)
-async def admin_test_cmd(client, message: Message):
-    if await is_admin(client, message):
-        await message.reply_text("You are admin.")
-    else:
-        await message.reply_text("You are not admin.")
+# ---------------- ADMINS LIST ----------------
+@app.on_message(filters.command("admins") & filters.group)
+async def list_admins(client: Client, message: Message):
+    admins = []
+
+    async for member in client.get_chat_members(
+        message.chat.id,
+        filter="administrators"
+    ):
+        user = member.user
+        if user:
+            admins.append(user.mention)
+
+    if not admins:
+        await message.reply_text("No admins found.")
+        return
+
+    text = "Admins:\n" + "\n".join(admins)
+    await message.reply_text(text)
 
 # ---------------- LINKS TOGGLE ----------------
 @app.on_message(filters.command("links") & filters.group)
@@ -101,7 +113,6 @@ async def auto_delete_links(client: Client, message: Message):
             pass
 
 # ---------------- WELCOME COMMANDS ----------------
-
 @app.on_message(filters.command("setwelcome") & filters.group)
 async def set_welcome(client: Client, message: Message):
     if not await is_admin(client, message):
@@ -151,8 +162,7 @@ async def welcome_new_members(client: Client, message: Message):
     text = WELCOME_TEXT.get(chat_id, "Welcome {mention}")
 
     for user in message.new_chat_members:
-        mention = user.mention
-        final_text = text.replace("{mention}", mention)
+        final_text = text.replace("{mention}", user.mention)
 
         try:
             sent = await message.reply_text(final_text)
