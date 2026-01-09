@@ -1,6 +1,7 @@
 import logging
 from pyrogram import Client, filters
 from pyrogram.types import Message
+from pyrogram.enums import ChatMemberStatus
 from config import API_ID, API_HASH, BOT_TOKEN
 
 # ---------------- LOGGING ----------------
@@ -17,7 +18,7 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# ---------------- ADMIN CHECK HELPER ----------------
+# ---------------- ADMIN CHECK (FIXED) ----------------
 async def is_admin(client: Client, message: Message) -> bool:
     if not message.from_user or not message.chat:
         return False
@@ -26,7 +27,10 @@ async def is_admin(client: Client, message: Message) -> bool:
             message.chat.id,
             message.from_user.id
         )
-        return member.status in ("administrator", "owner")
+        return member.status in (
+            ChatMemberStatus.ADMINISTRATOR,
+            ChatMemberStatus.OWNER
+        )
     except Exception:
         return False
 
