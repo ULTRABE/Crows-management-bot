@@ -24,6 +24,7 @@ app = Client(
 LINK_DELETE_ENABLED = {}
 WELCOME_ENABLED = {}
 WELCOME_TEXT = {}
+RULES_TEXT = {}
 
 WELCOME_DELETE_AFTER = 10
 
@@ -48,11 +49,10 @@ async def is_admin(client: Client, message: Message) -> bool:
 def start_cmd(client, message: Message):
     message.reply_text("Bot is alive. Core system running.")
 
-# ---------------- ADMINS LIST (FIXED) ----------------
+# ---------------- ADMINS LIST ----------------
 @app.on_message(filters.command("admins") & filters.group)
 async def list_admins(client: Client, message: Message):
     admins = []
-
     async for member in client.get_chat_members(
         message.chat.id,
         filter=ChatMembersFilter.ADMINISTRATORS
@@ -64,9 +64,7 @@ async def list_admins(client: Client, message: Message):
         await message.reply_text("No admins found.")
         return
 
-    await message.reply_text(
-        "Admins:\n" + "\n".join(admins)
-    )
+    await message.reply_text("Admins:\n" + "\n".join(admins))
 
 # ---------------- LINKS TOGGLE ----------------
 @app.on_message(filters.command("links") & filters.group)
@@ -170,6 +168,29 @@ async def welcome_new_members(client: Client, message: Message):
             await sent.delete()
         except Exception:
             pass
+
+# ---------------- SET RULES ----------------
+@app.on_message(filters.command("setrules") & filters.group)
+async def set_rules(client: Client, message: Message):
+    if not await is_admin(client, message):
+        return
+
+    if not message.reply_to_message or not message.reply_to_message.text:
+        await message.reply_text("Reply to a message to set rules.")
+        return
+
+    RULES_TEXT[message.chat.id] = message.reply_to_message.text
+    await message.reply_text("Rules set.")
+
+# ---------------- SHOW RULES ----------------
+@app.on_message(filters.command("rules") & filters.group)
+async def show_rules(client: Client, message: Message):
+    rules = RULES_TEXT.get(message.chat.id)
+    if not rules:
+        await message.reply_text("No rules have been set.")
+        return
+
+    await message.reply_text("Rules:\n" + rules)
 
 # ---------------- RUN ----------------
 app.run()
