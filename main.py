@@ -20,6 +20,9 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
+# ---------------- IN-MEMORY SETTINGS ----------------
+LINK_DELETE_ENABLED = {}  # chat_id: bool (default True)
+
 # ---------------- ADMIN CHECK ----------------
 async def is_admin(client: Client, message: Message) -> bool:
     if not message.from_user or not message.chat:
@@ -36,12 +39,12 @@ async def is_admin(client: Client, message: Message) -> bool:
     except Exception:
         return False
 
-# ---------------- START COMMAND ----------------
+# ---------------- START ----------------
 @app.on_message(filters.command("start"))
 def start_cmd(client, message: Message):
     message.reply_text("Bot is alive. Phase 0 OK.")
 
-# ---------------- ADMIN TEST COMMAND ----------------
+# ---------------- ADMIN TEST ----------------
 @app.on_message(filters.command("admin") & filters.group)
 async def admin_test_cmd(client, message: Message):
     if await is_admin(client, message):
@@ -49,7 +52,31 @@ async def admin_test_cmd(client, message: Message):
     else:
         await message.reply_text("You are not admin.")
 
-# ---------------- AUTO DELETE LINKS (PHASE 2) ----------------
+# ---------------- LINKS TOGGLE ----------------
+@app.on_message(filters.command("links") & filters.group)
+async def links_toggle(client: Client, message: Message):
+    if not await is_admin(client, message):
+        return
+
+    args = message.text.split(maxsplit=1)
+    chat_id = message.chat.id
+
+    if len(args) < 2:
+        await message.reply_text("Usage: /links on | off")
+        return
+
+    state = args[1].lower()
+
+    if state == "off":
+        LINK_DELETE_ENABLED[chat_id] = False
+        await message.reply_text("Link auto-delete disabled.")
+    elif state == "on":
+        LINK_DELETE_ENABLED[chat_id] = True
+        await message.reply_text("Link auto-delete enabled.")
+    else:
+        await message.reply_text("Usage: /links on | off")
+
+# ---------------- AUTO DELETE LINKS ----------------
 LINK_REGEX = re.compile(
     r"(https?://|t\.me/|www\.)",
     re.IGNORECASE
@@ -57,10 +84,13 @@ LINK_REGEX = re.compile(
 
 @app.on_message(filters.group & filters.text)
 async def auto_delete_links(client: Client, message: Message):
-    if not message.text:
+    chat_id = message.chat.id
+
+    # default = enabled
+    if LINK_DELETE_ENABLED.get(chat_id, True) is False:
         return
 
-    if LINK_REGEX.search(message.text):
+    if message.text and LINK_REGEX.search(message.text):
         try:
             await asyncio.sleep(5)
             await message.delete()
