@@ -20,7 +20,6 @@ WELCOME_ENABLED = {}
 WELCOME_TEXT = {}
 RULES_TEXT = {}
 
-# STATE
 WAITING_FOR_RULES = set()
 WAITING_FOR_WELCOME = set()
 
@@ -56,21 +55,21 @@ async def list_admins(client, message):
             admins.append(m.user.mention)
     await message.reply_text("Admins:\n" + "\n".join(admins))
 
-# ---------------- LINKS ----------------
+# ---------------- TEXT HANDLER (STATE + LINKS) ----------------
 LINK_REGEX = re.compile(r"(https?://|t\.me/|www\.)", re.I)
 
-@app.on_message(filters.group & filters.text & ~filters.command)
-async def link_and_state_handler(client, message):
+@app.on_message(filters.group & filters.text & ~filters.regex(r"^/"))
+async def text_pipeline(client, message):
     chat_id = message.chat.id
 
-    # ---------- STATE: RULES ----------
+    # ----- RULES CAPTURE -----
     if chat_id in WAITING_FOR_RULES and await is_admin(client, message):
         RULES_TEXT[chat_id] = message.text
         WAITING_FOR_RULES.remove(chat_id)
         await message.reply_text("Rules saved.")
         return
 
-    # ---------- STATE: WELCOME ----------
+    # ----- WELCOME CAPTURE -----
     if chat_id in WAITING_FOR_WELCOME and await is_admin(client, message):
         WELCOME_TEXT[chat_id] = message.text
         WELCOME_ENABLED[chat_id] = True
@@ -78,7 +77,7 @@ async def link_and_state_handler(client, message):
         await message.reply_text("Welcome message saved.")
         return
 
-    # ---------- LINK DELETE ----------
+    # ----- LINK DELETE -----
     if LINK_DELETE_ENABLED.get(chat_id, True):
         if LINK_REGEX.search(message.text):
             await asyncio.sleep(5)
