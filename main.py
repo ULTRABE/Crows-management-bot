@@ -2,7 +2,11 @@ import logging
 import asyncio
 import re
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import (
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 from pyrogram.enums import ChatMemberStatus
 from config import API_ID, API_HASH, BOT_TOKEN
 
@@ -92,6 +96,7 @@ LINK_REGEX = re.compile(
 async def auto_delete_links(client: Client, message: Message):
     chat_id = message.chat.id
 
+    # default = enabled
     if LINK_DELETE_ENABLED.get(chat_id, True) is False:
         return
 
@@ -102,8 +107,7 @@ async def auto_delete_links(client: Client, message: Message):
         except Exception:
             pass
 
-# ---------------- SANGMATA RELAY ----------------
-SANGMATA_BOT = "SangMataInfo_bot"
+# ---------------- SANGMATA RELAY (FIXED) ----------------
 
 @app.on_message(filters.command("age") & filters.group)
 async def sangmata_username_history(client: Client, message: Message):
@@ -111,9 +115,13 @@ async def sangmata_username_history(client: Client, message: Message):
     query = f"@{user.username}" if user.username else str(user.id)
 
     kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("View via SangMata", switch_inline_query=query)]]
+        [[InlineKeyboardButton(
+            text="View via SangMata",
+            switch_inline_query_current_chat=query
+        )]]
     )
     await message.reply_text("Username history", reply_markup=kb)
+
 
 @app.on_message(filters.command("nage") & filters.group)
 async def sangmata_name_history(client: Client, message: Message):
@@ -121,7 +129,10 @@ async def sangmata_name_history(client: Client, message: Message):
     query = f"@{user.username}" if user.username else str(user.id)
 
     kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("View via SangMata", switch_inline_query=query)]]
+        [[InlineKeyboardButton(
+            text="View via SangMata",
+            switch_inline_query_current_chat=query
+        )]]
     )
     await message.reply_text("Name history", reply_markup=kb)
 
