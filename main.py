@@ -3,7 +3,7 @@ import asyncio
 import re
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from pyrogram.enums import ChatMemberStatus
+from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from config import API_ID, API_HASH, BOT_TOKEN
 
 # ---------------- LOGGING ----------------
@@ -21,13 +21,13 @@ app = Client(
 )
 
 # ---------------- IN-MEMORY SETTINGS ----------------
-LINK_DELETE_ENABLED = {}     # chat_id: bool
-WELCOME_ENABLED = {}         # chat_id: bool
-WELCOME_TEXT = {}            # chat_id: str
+LINK_DELETE_ENABLED = {}
+WELCOME_ENABLED = {}
+WELCOME_TEXT = {}
 
-WELCOME_DELETE_AFTER = 10    # seconds
+WELCOME_DELETE_AFTER = 10
 
-# ---------------- ADMIN CHECK (HELPER) ----------------
+# ---------------- ADMIN CHECK ----------------
 async def is_admin(client: Client, message: Message) -> bool:
     if not message.from_user or not message.chat:
         return False
@@ -48,25 +48,25 @@ async def is_admin(client: Client, message: Message) -> bool:
 def start_cmd(client, message: Message):
     message.reply_text("Bot is alive. Core system running.")
 
-# ---------------- ADMINS LIST ----------------
+# ---------------- ADMINS LIST (FIXED) ----------------
 @app.on_message(filters.command("admins") & filters.group)
 async def list_admins(client: Client, message: Message):
     admins = []
 
     async for member in client.get_chat_members(
         message.chat.id,
-        filter="administrators"
+        filter=ChatMembersFilter.ADMINISTRATORS
     ):
-        user = member.user
-        if user:
-            admins.append(user.mention)
+        if member.user:
+            admins.append(member.user.mention)
 
     if not admins:
         await message.reply_text("No admins found.")
         return
 
-    text = "Admins:\n" + "\n".join(admins)
-    await message.reply_text(text)
+    await message.reply_text(
+        "Admins:\n" + "\n".join(admins)
+    )
 
 # ---------------- LINKS TOGGLE ----------------
 @app.on_message(filters.command("links") & filters.group)
@@ -112,7 +112,7 @@ async def auto_delete_links(client: Client, message: Message):
         except Exception:
             pass
 
-# ---------------- WELCOME COMMANDS ----------------
+# ---------------- SET WELCOME ----------------
 @app.on_message(filters.command("setwelcome") & filters.group)
 async def set_welcome(client: Client, message: Message):
     if not await is_admin(client, message):
@@ -128,6 +128,7 @@ async def set_welcome(client: Client, message: Message):
 
     await message.reply_text("Welcome message set.")
 
+# ---------------- TOGGLE WELCOME ----------------
 @app.on_message(filters.command("welcome") & filters.group)
 async def toggle_welcome(client: Client, message: Message):
     if not await is_admin(client, message):
@@ -152,20 +153,19 @@ async def toggle_welcome(client: Client, message: Message):
         await message.reply_text("Usage: /welcome on | off")
 
 # ---------------- WELCOME HANDLER ----------------
-@app.on_message(filters.new_chat_members)
+@app.on_message(filters.new_chat_members & filters.group)
 async def welcome_new_members(client: Client, message: Message):
     chat_id = message.chat.id
 
     if not WELCOME_ENABLED.get(chat_id, False):
         return
 
-    text = WELCOME_TEXT.get(chat_id, "Welcome {mention}")
+    template = WELCOME_TEXT.get(chat_id, "Welcome {mention}")
 
     for user in message.new_chat_members:
-        final_text = text.replace("{mention}", user.mention)
-
+        text = template.replace("{mention}", user.mention)
         try:
-            sent = await message.reply_text(final_text)
+            sent = await message.reply_text(text)
             await asyncio.sleep(WELCOME_DELETE_AFTER)
             await sent.delete()
         except Exception:
