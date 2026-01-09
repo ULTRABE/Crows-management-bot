@@ -1,6 +1,5 @@
 import logging
 import asyncio
-import re
 from pyrogram import Client, filters
 from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from config import API_ID, API_HASH, BOT_TOKEN
@@ -18,14 +17,13 @@ app = Client(
 # ---------------- STORAGE ----------------
 LINK_DELETE_ENABLED = {}
 WELCOME_ENABLED = {}
-WELCOME_DATA = {}
+WELCOME_DATA = {}   # {chat_id: {type, file_id?, text}}
 RULES_TEXT = {}
 
 WAITING_FOR_RULES = set()
 WAITING_FOR_WELCOME = set()
 
 WELCOME_DELETE_AFTER = 10
-LINK_REGEX = re.compile(r"(https?://|t\.me/|www\.)", re.I)
 
 # ---------------- ADMIN CHECK ----------------
 async def is_admin(client, message):
@@ -45,7 +43,7 @@ async def is_admin(client, message):
 def start_cmd(client, message):
     message.reply_text("Bot is alive.")
 
-# ---------------- ADMINS ----------------
+# ---------------- ADMINS LIST ----------------
 @app.on_message(filters.command("admins") & filters.group)
 async def list_admins(client, message):
     admins = []
@@ -61,9 +59,7 @@ async def list_admins(client, message):
 # CONFIG + CONTENT PIPELINE (NO DELETIONS)
 # =================================================
 @app.on_message(
-    filters.group
-    & (filters.text | filters.photo | filters.video)
-    & ~filters.regex(r"^/")
+    filters.group & (filters.text | filters.photo | filters.video)
 )
 async def content_pipeline(client, message):
     chat_id = message.chat.id
@@ -107,29 +103,34 @@ async def content_pipeline(client, message):
         return
 
 # =================================================
-# LINK DELETE — PURE TEXT ONLY (FINAL FIX)
+# LINK DELETE — ENTITY-BASED, PURE TEXT ONLY
 # =================================================
-@app.on_message(filters.group & filters.text & ~filters.regex(r"^/"))
+@app.on_message(filters.group & filters.text)
 async def link_delete_handler(client, message):
     chat_id = message.chat.id
 
-    # 🔒 DO NOT TOUCH MEDIA (photo/video with caption)
+    # Never touch media or captions
     if message.media:
         return
 
-    # Skip during configuration
+    # Skip config mode
     if chat_id in WAITING_FOR_RULES or chat_id in WAITING_FOR_WELCOME:
         return
 
     if not LINK_DELETE_ENABLED.get(chat_id, True):
         return
 
-    if LINK_REGEX.search(message.text):
-        await asyncio.sleep(5)
-        try:
-            await message.delete()
-        except Exception:
-            pass
+    entities = message.entities or []
+    has_url = any(e.type in ("url", "text_link") for e in entities)
+
+    if not has_url:
+        return
+
+    await asyncio.sleep(5)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
 # ---------------- LINKS TOGGLE ----------------
 @app.on_message(filters.command("links") & filters.group)
@@ -152,7 +153,6 @@ async def set_rules(client, message):
 
     WAITING_FOR_RULES.add(message.chat.id)
     WAITING_FOR_WELCOME.discard(message.chat.id)
-
     await message.reply_text("Send the rules message now.")
 
 # ---------------- SHOW RULES ----------------
@@ -172,7 +172,6 @@ async def set_welcome(client, message):
 
     WAITING_FOR_WELCOME.add(message.chat.id)
     WAITING_FOR_RULES.discard(message.chat.id)
-
     await message.reply_text("Send the welcome message now.")
 
 # ---------------- TOGGLE WELCOME ----------------
