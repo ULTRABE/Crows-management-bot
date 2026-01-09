@@ -1,4 +1,6 @@
 import logging
+import asyncio
+import re
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ChatMemberStatus
@@ -18,7 +20,7 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# ---------------- ADMIN CHECK (FIXED) ----------------
+# ---------------- ADMIN CHECK ----------------
 async def is_admin(client: Client, message: Message) -> bool:
     if not message.from_user or not message.chat:
         return False
@@ -46,6 +48,24 @@ async def admin_test_cmd(client, message: Message):
         await message.reply_text("You are admin.")
     else:
         await message.reply_text("You are not admin.")
+
+# ---------------- AUTO DELETE LINKS (PHASE 2) ----------------
+LINK_REGEX = re.compile(
+    r"(https?://|t\.me/|www\.)",
+    re.IGNORECASE
+)
+
+@app.on_message(filters.group & filters.text)
+async def auto_delete_links(client: Client, message: Message):
+    if not message.text:
+        return
+
+    if LINK_REGEX.search(message.text):
+        try:
+            await asyncio.sleep(5)
+            await message.delete()
+        except Exception:
+            pass
 
 # ---------------- RUN ----------------
 app.run()
