@@ -4,7 +4,6 @@ from pyrogram import Client, filters
 from pyrogram.enums import ChatMemberStatus, ChatMembersFilter
 from config import API_ID, API_HASH, BOT_TOKEN
 
-# ---------------- BASIC SETUP ----------------
 logging.basicConfig(level=logging.INFO)
 
 app = Client(
@@ -17,7 +16,7 @@ app = Client(
 # ---------------- STORAGE ----------------
 LINK_DELETE_ENABLED = {}
 WELCOME_ENABLED = {}
-WELCOME_DATA = {}   # {chat_id: {type, file_id?, text}}
+WELCOME_DATA = {}
 RULES_TEXT = {}
 
 WAITING_FOR_RULES = set()
@@ -43,7 +42,7 @@ async def is_admin(client, message):
 def start_cmd(client, message):
     message.reply_text("Bot is alive.")
 
-# ---------------- ADMINS LIST ----------------
+# ---------------- ADMINS ----------------
 @app.on_message(filters.command("admins") & filters.group)
 async def list_admins(client, message):
     admins = []
@@ -56,10 +55,12 @@ async def list_admins(client, message):
     await message.reply_text("Admins:\n" + "\n".join(admins))
 
 # =================================================
-# CONFIG + CONTENT PIPELINE (NO DELETIONS)
+# CONFIG + CONTENT PIPELINE (NO COMMANDS HERE)
 # =================================================
 @app.on_message(
-    filters.group & (filters.text | filters.photo | filters.video)
+    filters.group
+    & (filters.text | filters.photo | filters.video)
+    & ~filters.command
 )
 async def content_pipeline(client, message):
     chat_id = message.chat.id
@@ -103,20 +104,17 @@ async def content_pipeline(client, message):
         return
 
 # =================================================
-# LINK DELETE — ENTITY-BASED, PURE TEXT ONLY
+# LINK DELETE — ENTITY BASED, PURE TEXT ONLY
 # =================================================
-@app.on_message(filters.group & filters.text)
+@app.on_message(filters.group & filters.text & ~filters.command)
 async def link_delete_handler(client, message):
     chat_id = message.chat.id
 
-    # Never touch media or captions
+    # Skip media & config mode
     if message.media:
         return
-
-    # Skip config mode
     if chat_id in WAITING_FOR_RULES or chat_id in WAITING_FOR_WELCOME:
         return
-
     if not LINK_DELETE_ENABLED.get(chat_id, True):
         return
 
@@ -137,11 +135,9 @@ async def link_delete_handler(client, message):
 async def links_toggle(client, message):
     if not await is_admin(client, message):
         return
-
     if len(message.command) < 2:
         await message.reply_text("Usage: /links on | off")
         return
-
     LINK_DELETE_ENABLED[message.chat.id] = message.command[1].lower() == "on"
     await message.reply_text("Link setting updated.")
 
@@ -150,7 +146,6 @@ async def links_toggle(client, message):
 async def set_rules(client, message):
     if not await is_admin(client, message):
         return
-
     WAITING_FOR_RULES.add(message.chat.id)
     WAITING_FOR_WELCOME.discard(message.chat.id)
     await message.reply_text("Send the rules message now.")
@@ -169,7 +164,6 @@ async def show_rules(client, message):
 async def set_welcome(client, message):
     if not await is_admin(client, message):
         return
-
     WAITING_FOR_WELCOME.add(message.chat.id)
     WAITING_FOR_RULES.discard(message.chat.id)
     await message.reply_text("Send the welcome message now.")
@@ -179,11 +173,9 @@ async def set_welcome(client, message):
 async def toggle_welcome(client, message):
     if not await is_admin(client, message):
         return
-
     if len(message.command) < 2:
         await message.reply_text("Usage: /welcome on | off")
         return
-
     WELCOME_ENABLED[message.chat.id] = message.command[1].lower() == "on"
     await message.reply_text("Welcome updated.")
 
@@ -191,17 +183,14 @@ async def toggle_welcome(client, message):
 @app.on_message(filters.new_chat_members & filters.group)
 async def welcome_new_members(client, message):
     chat_id = message.chat.id
-
     if not WELCOME_ENABLED.get(chat_id):
         return
-
     data = WELCOME_DATA.get(chat_id)
     if not data:
         return
 
     for user in message.new_chat_members:
         text = data.get("text", "").replace("{mention}", user.mention)
-
         try:
             if data["type"] == "text":
                 sent = await message.reply_text(text)
@@ -213,7 +202,6 @@ async def welcome_new_members(client, message):
                 sent = await message.reply_video(
                     video=data["file_id"], caption=text or None
                 )
-
             await asyncio.sleep(WELCOME_DELETE_AFTER)
             await sent.delete()
         except Exception:
