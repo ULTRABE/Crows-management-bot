@@ -189,7 +189,8 @@ async def toggle_links(client, message):
     LINK_DELETE_ENABLED[message.chat.id] = message.command[1].lower() == "on"
     await message.reply_text("Link delete setting updated.")
 
-@app.on_message(filters.group & filters.text & ~filters.command)
+# 🔥 FIXED LINE HERE (NO ~filters.command)
+@app.on_message(filters.group & filters.text & ~filters.regex(r"^/"))
 async def link_delete_handler(_, message):
     chat_id = message.chat.id
     if not LINK_DELETE_ENABLED.get(chat_id, True):
@@ -205,7 +206,7 @@ async def link_delete_handler(_, message):
     except Exception:
         pass
 
-# ---------------- WELCOME SYSTEM (SIMPLE, STABLE) ----------------
+# ---------------- WELCOME SYSTEM ----------------
 @app.on_message(filters.command("welcome") & filters.group)
 async def toggle_welcome(client, message):
     if not await is_admin(client, message):
@@ -215,7 +216,6 @@ async def toggle_welcome(client, message):
     WELCOME_ENABLED[message.chat.id] = message.command[1].lower() == "on"
     await message.reply_text("Welcome setting updated.")
 
-# Hardcoded safe welcome template (NO CAPTURE MODE)
 WELCOME_DATA_DEFAULT = {
     "type": "text",
     "text": "Welcome {mention} to the group."
@@ -268,7 +268,10 @@ async def help_cmd(_, msg):
 async def help_cb(_, q):
     key = q.data.replace("help_", "")
     try:
-        await q.message.edit_text(HELP_TEXT.get(key, HELP_TEXT["main"]), reply_markup=help_kb())
+        await q.message.edit_text(
+            HELP_TEXT.get(key, HELP_TEXT["main"]),
+            reply_markup=help_kb()
+        )
     except Exception:
         pass
     await q.answer()
